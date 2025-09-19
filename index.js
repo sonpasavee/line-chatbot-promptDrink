@@ -35,6 +35,7 @@ const waterSchema = new mongoose.Schema({
   dailyGoal: { type: Number, default: 2000 }, // ค่าเริ่มต้น 2000 ml
   reminders: { type: Number, default: 0 }, // แจ้งเตือนทุกกี่ชม.
   nextReminder: { type: Date },
+  reminderActive: { type: Boolean, default: false },
   dailyIntake: [
     {
       amount: Number,
@@ -83,6 +84,7 @@ const handleEvent = async (event) => {
     if (!isNaN(hours)) {
       userData.reminders = hours;
       userData.nextReminder = new Date(Date.now() + hours * 60 * 60 * 1000); // บวกชั่วโมงจากตอนนี้
+      userData.reminderActive = true;
       await userData.save();
 
       return client.replyMessage(event.replyToken, {
@@ -148,9 +150,61 @@ const handleEvent = async (event) => {
     // summary
     if (userMessage.toLowerCase() === "summary") {
       const total = userData.dailyIntake.reduce((a, b) => a + b.amount, 0);
+      const goal = userData.dailyGoal;
+      const percent = Math.min((total / goal) * 100, 100);
+      const today = new Date()
+      const day = today.getDate()
+      const month = today.getMonth() + 1
+      const year = today.getFullYear()
+
       return client.replyMessage(event.replyToken, {
-        type: "text",
-        text: `📊 สรุปวันนี้ คุณดื่มไปแล้ว ${total} / ${userData.dailyGoal} ml`,
+        type: "flex",
+        altText: "สรุปดื่มน้ำวันนี้",
+        contents: {
+          type: "bubble",
+          body: {
+            type: "box",
+            layout: "vertical",
+            spacing: "md",
+            contents: [
+              {
+                type: "text",
+                text: `📊 สรุปดื่มน้ำวันนี้ ${day}/${month}/${year}`,
+                weight: "bold",
+                size: "md",
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                height: "20px",
+                borderWidth: "2px",
+                cornerRadius: "20px",
+                borderColor: "#0000FF",
+                contents: [
+                  {
+                    type: "box",
+                    layout: "horizontal",
+                    backgroundColor: "#00BFFF",
+                    flex: Math.round(percent),
+                    contents: [],
+                  },
+                  {
+                    type: "box",
+                    layout: "horizontal",
+                    flex: 100 - Math.round(percent),
+                    contents: [],
+                  },
+                ],
+              },
+              {
+                type: "text",
+                text: `${total}/${goal} ml (${Math.round(percent)}%)`,
+                size: "sm",
+                color: "#555555",
+              },
+            ],
+          },
+        },
       });
     }
 
@@ -174,6 +228,7 @@ cron.schedule("*/1 * * * *", async () => {
   const users = await Water.find({
     reminders: { $gt: 0 },
     nextReminder: { $lte: now },
+    reminderActive: true,
   });
 
   for (const user of users) {
@@ -187,3 +242,5 @@ cron.schedule("*/1 * * * *", async () => {
     await user.save();
   }
 });
+
+// reset ข้อมูลทุกวัน
